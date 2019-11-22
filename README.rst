@@ -1,5 +1,15 @@
 |Build Status| |Coverage Status|
 
+Update
+======
+
+Enhanced to support recording more metrics including:
+
+- net connections
+- io read/write bytes
+- open fds
+- threads
+
 About
 =====
 

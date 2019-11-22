@@ -122,21 +122,32 @@ def monitor(pid, logfile=None, plot=None, duration=None, interval=None,
 
     # Record start time
     start_time = time.time()
+    log_fields = [
+        ('times', 'Elapsed time'),
+        ('cpu', 'CPU (%)'),
+        ('mem_real', 'Real (MB)'),
+        ('mem_virtual', 'Virtual (MB)'),
+        ('io_read', 'IO Read(MB)'),
+        ('io_write', 'IO Write(MB)'),
+        ('connections', 'Conn'),
+        ('open_fds', 'Open FD'),
+        ('threads', 'Threads'),
+    ]
 
     if logfile:
         f = open(logfile, 'w')
-        f.write("# {0:12s} {1:12s} {2:12s} {3:12s}\n".format(
-            'Elapsed time'.center(12),
-            'CPU (%)'.center(12),
-            'Real (MB)'.center(12),
-            'Virtual (MB)'.center(12))
-        )
+        f.write("# " + " ".join("{0:12s}".format(i[1].center(12)) for i in log_fields) + "\n")
 
     log = {}
     log['times'] = []
     log['cpu'] = []
     log['mem_real'] = []
     log['mem_virtual'] = []
+    log['io_read'] = []
+    log['io_write'] = []
+    log['connections'] = []
+    log['open_fds'] = []
+    log['threads'] = []
 
     try:
 
@@ -167,7 +178,14 @@ def monitor(pid, logfile=None, plot=None, duration=None, interval=None,
             try:
                 current_cpu = get_percent(pr)
                 current_mem = get_memory(pr)
-            except Exception:
+                current_io = pr.io_counters()
+                current_io_write = current_io.write_bytes / 1024. ** 2
+                current_io_read = current_io.read_bytes / 1024. ** 2
+                current_connections = len(pr.connections())
+                current_fds = pr.num_fds()
+                current_threads = pr.num_threads()
+            except Exception as e:
+                print(e)
                 break
             current_mem_real = current_mem.rss / 1024. ** 2
             current_mem_virtual = current_mem.vms / 1024. ** 2
@@ -178,17 +196,31 @@ def monitor(pid, logfile=None, plot=None, duration=None, interval=None,
                     try:
                         current_cpu += get_percent(child)
                         current_mem = get_memory(child)
+                        current_io = child.io_counters()
+                        current_io_write += current_io.write_bytes / 1024. ** 2
+                        current_io_read += current_io.read_bytes / 1024. ** 2
+                        current_connections += len(child.connections())
+                        current_fds += child.num_fds()
+                        current_threads += child.num_threads()
                     except Exception:
                         continue
                     current_mem_real += current_mem.rss / 1024. ** 2
                     current_mem_virtual += current_mem.vms / 1024. ** 2
 
+            tmp = {
+                "times": current_time - start_time,
+                "cpu": current_cpu,
+                "mem_real": current_mem_real,
+                "mem_virtual": current_mem_virtual,
+                "io_write": current_io_write,
+                "io_read": current_io_read,
+                "connections": current_connections,
+                "open_fds": current_fds,
+                "threads": current_threads,
+            }
+
             if logfile:
-                f.write("{0:12.3f} {1:12.3f} {2:12.3f} {3:12.3f}\n".format(
-                    current_time - start_time,
-                    current_cpu,
-                    current_mem_real,
-                    current_mem_virtual))
+                f.write(" ".join("{0:12.3f}".format(tmp.get(i[0], 0)) for i in log_fields) + "\n")
                 f.flush()
 
             if interval is not None:
@@ -196,10 +228,9 @@ def monitor(pid, logfile=None, plot=None, duration=None, interval=None,
 
             # If plotting, record the values
             if plot:
-                log['times'].append(current_time - start_time)
-                log['cpu'].append(current_cpu)
-                log['mem_real'].append(current_mem_real)
-                log['mem_virtual'].append(current_mem_virtual)
+                for i in log_fields:
+                    k = i[0]
+                    log[k].append(tmp.get(k, 0))
 
     except KeyboardInterrupt:  # pragma: no cover
         pass
